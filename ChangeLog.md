@@ -18,6 +18,8 @@ to browse the changes between the tags.
 
 See docs/process.md for more on how version tagging works.
 
+3.1.16-update1: Cherry-picked upstream fix : https://github.com/emscripten-core/emscripten/commit/73c1d121263b0af679a0b52cd0705dfcfcff8079
+
 3.1.17
 ------
 
