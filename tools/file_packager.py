@@ -74,9 +74,12 @@ import sys
 from subprocess import PIPE
 from textwrap import dedent
 
-__scriptdir__ = os.path.dirname(os.path.abspath(__file__))
-__rootdir__ = os.path.dirname(__scriptdir__)
-sys.path.append(__rootdir__)
+# fabricweb: this causes a "ImportError: cannot import name 'shared' from 'tools'", because the wrong sequence of path has been added into the sys.path
+# regression from: https://github.com/emscripten-core/emscripten/pull/15704
+# __scriptdir__ = os.path.dirname(os.path.abspath(__file__))
+# __rootdir__ = os.path.dirname(__scriptdir__)
+# sys.path.append(__rootdir__) 
+sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools import shared, utils, js_manipulation
 
