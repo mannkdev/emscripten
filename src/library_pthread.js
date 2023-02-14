@@ -283,7 +283,12 @@ var LibraryPThread = {
           if (Module['onAbort']) {
             Module['onAbort'](d['arg']);
           }
-        } else if (cmd) {
+        } else if (cmd === 'custom') {
+          if (Module['onCustomMessage']) {
+            Module['onCustomMessage'](e);
+          }
+        }
+        else if (cmd) {
           // The received message looks like something that should be handled by this message
           // handler, (since there is a e.data.cmd field present), but is not one of the
           // recognized commands:

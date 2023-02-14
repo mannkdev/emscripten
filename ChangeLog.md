@@ -18,6 +18,8 @@ to browse the changes between the tags.
 
 See docs/process.md for more on how version tagging works.
 
+3.1.16-update6: Added an onCustomMessage so that we can receive a transferable object over from pthreads to the UI thread for our rendering usage.
+3.1.16-update5: Cherry-picked upstream fix: https://github.com/emscripten-core/emscripten/pull/18311 for fixing loading of our side modules. Details in https://wiki.autodesk.com/display/~kangm/Debugging+notes+for+ASM+side+module+load+issue?src=jira
 3.1.16-update4: Fix python import error due to wrong sequence of path added into the sys.path
 3.1.16-update3: Work around side imports increase issue https://github.com/emscripten-core/emscripten/issues/15487. by rebuilding lld
 3.1.16-update2: Cherry-picked upstream fix : https://github.com/emscripten-core/emscripten/commit/e79f10ebdbd8649324bfd84933548bfee55d566a
