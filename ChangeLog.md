@@ -18,6 +18,7 @@ to browse the changes between the tags.
 
 See docs/process.md for more on how version tagging works.
 
+3.1.16-update7: Added zero memory changes from #17659 (emscripten) for out of memory error when loading side module.
 3.1.16-update6: Added an onCustomMessage so that we can receive a transferable object over from pthreads to the UI thread for our rendering usage.
 3.1.16-update5: Cherry-picked upstream fix: https://github.com/emscripten-core/emscripten/pull/18311 for fixing loading of our side modules. Details in https://wiki.autodesk.com/display/~kangm/Debugging+notes+for+ASM+side+module+load+issue?src=jira
 3.1.16-update4: Fix python import error due to wrong sequence of path added into the sys.path

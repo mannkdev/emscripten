@@ -52,6 +52,7 @@ mergeInto(LibraryManager.library, {
     }
 #endif
     HEAPU8.fill(0, address, address + size);
+    return address;
   },
 
 #if SAFE_HEAP
@@ -3602,8 +3603,7 @@ mergeInto(LibraryManager.library, {
     size = alignMemory(size, {{{ WASM_PAGE_SIZE }}});
     var ptr = _emscripten_builtin_memalign({{{ WASM_PAGE_SIZE }}}, size);
     if (!ptr) return 0;
-    zeroMemory(ptr, size);
-    return ptr;
+    return zeroMemory(ptr, size);
 #elif ASSERTIONS
     abort('internal error: mmapAlloc called but `emscripten_builtin_memalign` native symbol not exported');
 #else
@@ -3628,6 +3628,7 @@ mergeInto(LibraryManager.library, {
   // have __heap_base hardcoded into it - it receives it from JS as an extern
   // global, basically).
   __heap_base: '{{{ to64(HEAP_BASE) }}}',
+  __global_base: '{{{ to64(GLOBAL_BASE) }}}',
 #if WASM_EXCEPTIONS
   // In dynamic linking we define tags here and feed them to each module
   __cpp_exception: "new WebAssembly.Tag({'parameters': ['{{{ POINTER_WASM_TYPE }}}']})",
