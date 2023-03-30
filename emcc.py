@@ -638,6 +638,11 @@ def make_js_executable(script):
 def do_split_module(wasm_file):
   os.rename(wasm_file, wasm_file + '.orig')
   args = ['--instrument']
+  if options.requested_debug:
+    # Tell wasm-split to preserve function names.
+    args += ['-g']
+  if settings.USE_PTHREADS:
+    args += ['--in-memory']
   building.run_binaryen_command('wasm-split', wasm_file + '.orig', outfile=wasm_file, args=args)
 
 

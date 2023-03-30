@@ -19,8 +19,9 @@ function writeStackCookie() {
   // ever overwritten.
   {{{ makeSetValue('max', 0, '0x2135467', 'i32' ) }}};
   {{{ makeSetValue('max', 4, '0x89BACDFE', 'i32' ) }}};
-#if !USE_ASAN && !SAFE_HEAP // ASan and SAFE_HEAP check address 0 themselves
+#if !USE_ASAN && !SAFE_HEAP && !SPLIT_MODULE // ASan and SAFE_HEAP check address 0 themselves
   // Also test the global address 0 for integrity.
+  // @ToDo remove the split_module checkflag
   HEAPU32[0] = 0x63736d65; /* 'emsc' */
 #endif
 }
@@ -38,8 +39,9 @@ function checkStackCookie() {
   if (cookie1 != 0x2135467 || cookie2 != 0x89BACDFE) {
     abort('Stack overflow! Stack cookie has been overwritten at 0x' + max.toString(16) + ', expected hex dwords 0x89BACDFE and 0x2135467, but received 0x' + cookie2.toString(16) + ' 0x' + cookie1.toString(16));
   }
-#if !USE_ASAN && !SAFE_HEAP // ASan and SAFE_HEAP check address 0 themselves
+#if !USE_ASAN && !SAFE_HEAP && !SPLIT_MODULE// ASan and SAFE_HEAP check address 0 themselves
   // Also test the global address 0 for integrity.
+  // @ToDo remove the split_module checkflag
   if (HEAPU32[0] !== 0x63736d65 /* 'emsc' */) abort('Runtime error: The application has corrupted its heap memory area (address zero)!');
 #endif
 }
