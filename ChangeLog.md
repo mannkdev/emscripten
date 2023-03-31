@@ -18,6 +18,7 @@ to browse the changes between the tags.
 
 See docs/process.md for more on how version tagging works.
 
+3.1.16-update9: Remove -g flag from wasm-split due to options.requested_debug flag was not avaliable within 3.1.16
 3.1.16-update8: Added --in-memory flag for wasm-split instrument build to capture multithread profile data.
 3.1.16-update7: Added zero memory changes from #17659 (emscripten) for out of memory error when loading side module.
 3.1.16-update6: Added an onCustomMessage so that we can receive a transferable object over from pthreads to the UI thread for our rendering usage.
