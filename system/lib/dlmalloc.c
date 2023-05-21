@@ -1,4 +1,6 @@
-
+#include <stdio.h>
+#define MSPACES 1
+#define FOOTERS 1
 /* XXX Emscripten XXX */
 #if __EMSCRIPTEN__
 // When building for wasm we export `malloc` and `emscripten_builtin_malloc` as
@@ -1564,6 +1566,7 @@ extern void*     sbrk(ptrdiff_t);
 #endif /* solaris or LACKS_SCHED_H */
 #if (defined(USE_RECURSIVE_LOCKS) && USE_RECURSIVE_LOCKS != 0) || !USE_SPIN_LOCKS
 #include <pthread.h>
+#include <threads.h>
 #endif /* USE_RECURSIVE_LOCKS ... */
 #elif defined(_MSC_VER)
 #ifndef _M_AMD64
@@ -2104,11 +2107,11 @@ static int pthread_init_lock (MLOCK_T *lk) {
 #define USE_LOCK_BIT               (2U)
 
 #ifndef ACQUIRE_MALLOC_GLOBAL_LOCK
-#define ACQUIRE_MALLOC_GLOBAL_LOCK()  ACQUIRE_LOCK(&malloc_global_mutex);
+#define ACQUIRE_MALLOC_GLOBAL_LOCK()  pthread_mutex_lock(&malloc_global_mutex);
 #endif
 
 #ifndef RELEASE_MALLOC_GLOBAL_LOCK
-#define RELEASE_MALLOC_GLOBAL_LOCK()  RELEASE_LOCK(&malloc_global_mutex);
+#define RELEASE_MALLOC_GLOBAL_LOCK()  pthread_mutex_unlock(&malloc_global_mutex);
 #endif
 
 #endif /* USE_LOCKS */
@@ -2702,6 +2705,8 @@ static struct malloc_state _gm_;
 #define gm                 (&_gm_)
 #define is_global(M)       ((M) == &_gm_)
 
+thread_local mstate _tls_ms_ = 0;
+
 #endif /* !ONLY_MSPACES */
 
 #define is_initialized(M)  ((M)->top != 0)
@@ -2808,9 +2813,11 @@ static int has_segment_link(mstate m, msegmentptr ss) {
  anything you like.
  */
 
+ int ensure_tls_ms();
+
 #if USE_LOCKS
-#define PREACTION(M)  ((use_lock(M))? ACQUIRE_LOCK(&(M)->mutex) : 0)
-#define POSTACTION(M) { if (use_lock(M)) RELEASE_LOCK(&(M)->mutex); }
+#define PREACTION(M)  (ensure_tls_ms())
+#define POSTACTION(M) {}
 #else /* USE_LOCKS */
 
 #ifndef PREACTION
@@ -4631,11 +4638,12 @@ void* dlmalloc(size_t bytes) {
      The ugly goto's here ensure that postaction occurs along all paths.
      */
     
-#if USE_LOCKS
-    ensure_initialization(); /* initialize in sys_alloc if not using locks */
-#endif
+//#if USE_LOCKS
+    //ensure_initialization(); /* initialize in sys_alloc if not using locks */
+//#endif
     
     if (!PREACTION(gm)) {
+        return mspace_malloc(_tls_ms_, bytes);
         void* mem;
         size_t nb;
         if (bytes <= MAX_SMALL_REQUEST) {
@@ -4757,6 +4765,7 @@ void dlfree(void* mem) {
      */
     
     if (mem != 0) {
+        ensure_tls_ms();
 #if __EMSCRIPTEN__
         /* XXX Emscripten Tracing API. */
         emscripten_trace_record_free(mem);
@@ -4768,6 +4777,12 @@ void dlfree(void* mem) {
             USAGE_ERROR_ACTION(fm, p);
             return;
         }
+        if(fm != _tls_ms_)
+        {
+            printf("BADBADBADYYYYYY\n");
+            return;
+        }
+        return mspace_free(_tls_ms_, mem);
 #else /* FOOTERS */
 #define fm gm
 #endif /* FOOTERS */
@@ -5282,24 +5297,15 @@ void* dlrealloc(void* oldmem, size_t bytes) {
         }
 #endif /* FOOTERS */
         if (!PREACTION(m)) {
-            mchunkptr newp = try_realloc_chunk(m, oldp, nb, 1);
-            POSTACTION(m);
-            if (newp != 0) {
-                check_inuse_chunk(m, newp);
-                mem = chunk2mem(newp);
-#if __EMSCRIPTEN__
-                /* XXX Emscripten Tracing API. */
-                emscripten_trace_record_reallocation(oldmem, mem, bytes);
-#endif
-            }
-            else {
-                mem = internal_malloc(m, bytes);
+                mem = internal_malloc(_tls_ms_, bytes);
                 if (mem != 0) {
                     size_t oc = chunksize(oldp) - overhead_for(oldp);
                     memcpy(mem, oldmem, (oc < bytes)? oc : bytes);
-                    internal_free(m, oldmem);
+                    if(m != _tls_ms_) {
+                        printf("REAAYYYLOCCC\n");
+                    }
+                    internal_free(_tls_ms_, oldmem);
                 }
-            }
         }
     }
     return mem;
@@ -5344,7 +5350,8 @@ void* dlmemalign(size_t alignment, size_t bytes) {
     if (alignment <= MALLOC_ALIGNMENT) {
         return dlmalloc(bytes);
     }
-    return internal_memalign(gm, alignment, bytes);
+    ensure_initialization();
+    return internal_memalign(_tls_ms_, alignment, bytes);
 }
 
 int dlposix_memalign(void** pp, size_t alignment, size_t bytes) {
@@ -5359,7 +5366,7 @@ int dlposix_memalign(void** pp, size_t alignment, size_t bytes) {
         else if (bytes <= MAX_REQUEST - alignment) {
             if (alignment <  MIN_CHUNK_SIZE)
                 alignment = MIN_CHUNK_SIZE;
-            mem = internal_memalign(gm, alignment, bytes);
+            mem = internal_memalign(_tls_ms_, alignment, bytes);
         }
     }
     if (mem == 0)
@@ -5501,6 +5508,7 @@ static mstate init_user_mstate(char* tbase, size_t tsize) {
     return m;
 }
 
+void* gm_malloc(size_t bytes);
 mspace create_mspace(size_t capacity, int locked) {
     mstate m = 0;
     size_t msize;
@@ -5510,7 +5518,7 @@ mspace create_mspace(size_t capacity, int locked) {
         size_t rs = ((capacity == 0)? mparams.granularity :
                      (capacity + TOP_FOOT_SIZE + msize));
         size_t tsize = granularity_align(rs);
-        char* tbase = (char*)(CALL_MMAP(tsize));
+        char* tbase = (char*)(gm_malloc(tsize));
         if (tbase != CMFAIL) {
             m = init_user_mstate(tbase, tsize);
             m->seg.sflags = USE_MMAP_BIT;
@@ -6064,6 +6072,134 @@ extern __typeof(malloc) emscripten_builtin_malloc __attribute__((alias("dlmalloc
 extern __typeof(free) emscripten_builtin_free __attribute__((alias("dlfree")));
 extern __typeof(memalign) emscripten_builtin_memalign __attribute__((alias("dlmemalign")));
 #endif
+
+void* gm_malloc(size_t bytes) {
+    ensure_initialization(); 
+    
+    if (!pthread_mutex_lock(&gm->mutex)) {
+        void* mem;
+        size_t nb;
+        if (bytes <= MAX_SMALL_REQUEST) {
+            bindex_t idx;
+            binmap_t smallbits;
+            nb = (bytes < MIN_REQUEST)? MIN_CHUNK_SIZE : pad_request(bytes);
+            idx = small_index(nb);
+            smallbits = gm->smallmap >> idx;
+            
+            if ((smallbits & 0x3U) != 0) { /* Remainderless fit to a smallbin. */
+                mchunkptr b, p;
+                idx += ~smallbits & 1;       /* Uses next bin if idx empty */
+                b = smallbin_at(gm, idx);
+                p = b->fd;
+                assert(chunksize(p) == small_index2size(idx));
+                unlink_first_small_chunk(gm, b, p, idx);
+                set_inuse_and_pinuse(gm, p, small_index2size(idx));
+                mem = chunk2mem(p);
+                check_malloced_chunk(gm, mem, nb);
+                goto postaction;
+            }
+            
+            else if (nb > gm->dvsize) {
+                if (smallbits != 0) { /* Use chunk in next nonempty smallbin */
+                    mchunkptr b, p, r;
+                    size_t rsize;
+                    bindex_t i;
+                    binmap_t leftbits = (smallbits << idx) & left_bits(idx2bit(idx));
+                    binmap_t leastbit = least_bit(leftbits);
+                    compute_bit2idx(leastbit, i);
+                    b = smallbin_at(gm, i);
+                    p = b->fd;
+                    assert(chunksize(p) == small_index2size(i));
+                    unlink_first_small_chunk(gm, b, p, i);
+                    rsize = small_index2size(i) - nb;
+                    /* Fit here cannot be remainderless if 4byte sizes */
+                    if (SIZE_T_SIZE != 4 && rsize < MIN_CHUNK_SIZE)
+                        set_inuse_and_pinuse(gm, p, small_index2size(i));
+                    else {
+                        set_size_and_pinuse_of_inuse_chunk(gm, p, nb);
+                        r = chunk_plus_offset(p, nb);
+                        set_size_and_pinuse_of_free_chunk(r, rsize);
+                        replace_dv(gm, r, rsize);
+                    }
+                    mem = chunk2mem(p);
+                    check_malloced_chunk(gm, mem, nb);
+                    goto postaction;
+                }
+                
+                else if (gm->treemap != 0 && (mem = tmalloc_small(gm, nb)) != 0) {
+                    check_malloced_chunk(gm, mem, nb);
+                    goto postaction;
+                }
+            }
+        }
+        else if (bytes >= MAX_REQUEST)
+            nb = MAX_SIZE_T; /* Too big to allocate. Force failure (in sys alloc) */
+        else {
+            nb = pad_request(bytes);
+            if (gm->treemap != 0 && (mem = tmalloc_large(gm, nb)) != 0) {
+                check_malloced_chunk(gm, mem, nb);
+                goto postaction;
+            }
+        }
+        
+        if (nb <= gm->dvsize) {
+            size_t rsize = gm->dvsize - nb;
+            mchunkptr p = gm->dv;
+            if (rsize >= MIN_CHUNK_SIZE) { /* split dv */
+                mchunkptr r = gm->dv = chunk_plus_offset(p, nb);
+                gm->dvsize = rsize;
+                set_size_and_pinuse_of_free_chunk(r, rsize);
+                set_size_and_pinuse_of_inuse_chunk(gm, p, nb);
+            }
+            else { /* exhaust dv */
+                size_t dvs = gm->dvsize;
+                gm->dvsize = 0;
+                gm->dv = 0;
+                set_inuse_and_pinuse(gm, p, dvs);
+            }
+            mem = chunk2mem(p);
+            check_malloced_chunk(gm, mem, nb);
+            goto postaction;
+        }
+        
+        else if (nb < gm->topsize) { /* Split top */
+            size_t rsize = gm->topsize -= nb;
+            mchunkptr p = gm->top;
+            mchunkptr r = gm->top = chunk_plus_offset(p, nb);
+            r->head = rsize | PINUSE_BIT;
+            set_size_and_pinuse_of_inuse_chunk(gm, p, nb);
+            mem = chunk2mem(p);
+            check_top_chunk(gm, gm->top);
+            check_malloced_chunk(gm, mem, nb);
+            goto postaction;
+        }
+        
+        mem = sys_alloc(gm, nb);
+        
+    postaction:
+        pthread_mutex_unlock(&gm->mutex);
+
+        return mem;
+    }
+    
+    return 0;
+}
+
+int ensure_tls_ms()
+{
+    if(__builtin_expect((bool)_tls_ms_, true))
+    {
+        return 0;
+    }
+
+    _tls_ms_ = create_mspace(0, 0);
+    if(!_tls_ms_)
+    {
+        printf("SORRYOHMOLLY\n");
+    }
+
+    return 0;
+}
 
 /* -------------------- Alternative MORECORE functions ------------------- */
 
